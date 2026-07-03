@@ -14,9 +14,9 @@ dependencyResolutionManagement {
     versionCatalogs {
         create("libs") {
             version("androidGradlePlugin", "8.2.2")
-            version("kotlin", "1.9.0")
+            version("kotlin", "1.9.24")
             version("compose", "1.5.4")
-            version("composeCompiler", "1.5.4")
+            version("composeCompiler", "1.5.14")
             version("activityCompose", "1.8.2")
             version("coreKtx", "1.12.0")
             version("lifecycle", "2.7.0")
