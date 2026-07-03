@@ -295,6 +295,7 @@ fun MainScreen() {
 }
 
 // 1. TELA PRINCIPAL (DASHBOARD)
+@kotlin.OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun DashboardView(
     kegelCount: Int,
