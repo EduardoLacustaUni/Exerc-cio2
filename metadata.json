@@ -1,0 +1,6 @@
+{
+  "name": "Lembretes de Kegel e Meditação",
+  "description": "Um aplicativo móvel para programar lembretes diários e realizar exercícios de Kegel e meditações guiadas.",
+  "requestFramePermissions": ["notifications"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
