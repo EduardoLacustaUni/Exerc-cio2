@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Tema básico do aplicativo herdando de um tema padrão do Material 3 -->
+    <style name="Theme.KegelMeditation" parent="@android:style/Theme.DeviceDefault.NoActionBar">
+        <!-- Cores customizadas primárias e de background se necessário -->
+        <item name="colorPrimary">#F59E0B</item>
+        <item name="android:statusBarColor">#020617</item>
+    </style>
+</resources>
