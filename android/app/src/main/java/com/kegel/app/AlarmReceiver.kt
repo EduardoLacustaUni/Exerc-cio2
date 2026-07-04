@@ -84,8 +84,39 @@ class AlarmReceiver : BroadcastReceiver() {
         fun scheduleNextAlarm(context: Context) {
             val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
             
-            // Em uma implementação real, carregaríamos o UserConfig das SharedPreferences persistentes
-            val config = UserConfig() // Default config: 10 kegel, 2 meditação
+            val sharedPrefs = context.getSharedPreferences("kegel_app_prefs", Context.MODE_PRIVATE)
+            val wakeTime = sharedPrefs.getString("wake_time", "08:00") ?: "08:00"
+            val sleepTime = sharedPrefs.getString("sleep_time", "22:00") ?: "22:00"
+            val kegelCount = sharedPrefs.getInt("kegel_count", 10)
+            val kegelDuration = sharedPrefs.getInt("kegel_duration", 2)
+            val meditationCount = sharedPrefs.getInt("meditation_count", 2)
+            val meditationDuration = sharedPrefs.getInt("meditation_duration", 5)
+            val alertsEnabled = sharedPrefs.getBoolean("alerts_enabled", true)
+
+            val intent = Intent(context, AlarmReceiver::class.java)
+            val pendingIntent = PendingIntent.getBroadcast(
+                context,
+                999,
+                intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+
+            if (!alertsEnabled) {
+                alarmManager.cancel(pendingIntent)
+                pendingIntent.cancel()
+                return
+            }
+
+            val config = UserConfig(
+                wakeTime = wakeTime,
+                sleepTime = sleepTime,
+                kegelCount = kegelCount,
+                kegelDurationMinutes = kegelDuration,
+                meditationCount = meditationCount,
+                meditationDurationMinutes = meditationDuration,
+                soundEnabled = true,
+                upcomingAlertsEnabled = true
+            )
 
             val now = System.currentTimeMillis()
             var dailySchedule = SchedulerUtils.generateDailySchedule(config)
@@ -103,32 +134,31 @@ class AlarmReceiver : BroadcastReceiver() {
             }
 
             if (nextNotif != null) {
-                val intent = Intent(context, AlarmReceiver::class.java).apply {
+                val alarmIntent = Intent(context, AlarmReceiver::class.java).apply {
                     putExtra("type", nextNotif.type.name.lowercase())
                     putExtra("title", nextNotif.title)
                     putExtra("message", nextNotif.message)
                     putExtra("duration", nextNotif.durationMinutes)
                 }
 
-                val pendingIntent = PendingIntent.getBroadcast(
+                val alarmPendingIntent = PendingIntent.getBroadcast(
                     context,
-                    999, // ID único para o Alarme ativo
-                    intent,
+                    999,
+                    alarmIntent,
                     PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
                 )
 
-                // Define o alarme exato mesmo se o dispositivo estiver em standby/Doze mode
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                     alarmManager.setExactAndAllowWhileIdle(
                         AlarmManager.RTC_WAKEUP,
                         nextNotif.timestamp,
-                        pendingIntent
+                        alarmPendingIntent
                     )
                 } else {
                     alarmManager.setExact(
                         AlarmManager.RTC_WAKEUP,
                         nextNotif.timestamp,
-                        pendingIntent
+                        alarmPendingIntent
                     )
                 }
             }

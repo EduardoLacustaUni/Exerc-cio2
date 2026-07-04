@@ -134,6 +134,31 @@ fun MainScreen() {
     var activeSessionType by remember { mutableStateOf<String?>(null) }
     var activeSessionDuration by remember { mutableStateOf(2) }
 
+    // Próximo Lembrete Computado
+    val nextEvent = remember(wakeTime, sleepTime, kegelCount, kegelDuration, meditationCount, meditationDuration, alertsEnabled) {
+        if (!alertsEnabled) null else {
+            val config = UserConfig(
+                wakeTime = wakeTime,
+                sleepTime = sleepTime,
+                kegelCount = kegelCount,
+                kegelDurationMinutes = kegelDuration,
+                meditationCount = meditationCount,
+                meditationDurationMinutes = meditationDuration
+            )
+            val nowMs = System.currentTimeMillis()
+            var schedule = SchedulerUtils.generateDailySchedule(config)
+            var next = schedule.firstOrNull { it.timestamp > nowMs }
+            if (next == null) {
+                val calendarTomorrow = Calendar.getInstance().apply {
+                    add(Calendar.DAY_OF_YEAR, 1)
+                }
+                schedule = SchedulerUtils.generateDailySchedule(config, calendarTomorrow.time)
+                next = schedule.firstOrNull { it.timestamp > nowMs }
+            }
+            next
+        }
+    }
+
     // Carregar logs iniciais do cache
     LaunchedEffect(Unit) {
         val count = sharedPrefs.getInt("logs_count", 0)
@@ -263,6 +288,7 @@ fun MainScreen() {
                         meditationCount = meditationCount,
                         logs = logsList,
                         alertsEnabled = alertsEnabled,
+                        nextEvent = nextEvent,
                         onStartSession = { type, duration ->
                             activeSessionType = type
                             activeSessionDuration = duration
@@ -280,13 +306,14 @@ fun MainScreen() {
                         meditationCount = meditationCount,
                         meditationDuration = meditationDuration,
                         alertsEnabled = alertsEnabled,
-                        onWakeTimeChange = { wakeTime = it; saveConfig() },
-                        onSleepTimeChange = { sleepTime = it; saveConfig() },
-                        onKegelCountChange = { kegelCount = it; saveConfig() },
-                        onKegelDurationChange = { kegelDuration = it; saveConfig() },
-                        onMeditationCountChange = { meditationCount = it; saveConfig() },
-                        onMeditationDurationChange = { meditationDuration = it; saveConfig() },
-                        onAlertsEnabledChange = { alertsEnabled = it; saveConfig() }
+                        onWakeTimeChange = { wakeTime = it },
+                        onSleepTimeChange = { sleepTime = it },
+                        onKegelCountChange = { kegelCount = it },
+                        onKegelDurationChange = { kegelDuration = it },
+                        onMeditationCountChange = { meditationCount = it },
+                        onMeditationDurationChange = { meditationDuration = it },
+                        onAlertsEnabledChange = { alertsEnabled = it; saveConfig() },
+                        onSave = { saveConfig() }
                     )
                 }
             }
@@ -302,6 +329,7 @@ fun DashboardView(
     meditationCount: Int,
     logs: List<ActivityLogItem>,
     alertsEnabled: Boolean,
+    nextEvent: ScheduledNotification?,
     onStartSession: (String, Int) -> Unit
 ) {
     val today = remember { Calendar.getInstance().apply { set(Calendar.HOUR_OF_DAY, 0) }.timeInMillis }
@@ -344,6 +372,57 @@ fun DashboardView(
                 Icon(Icons.Default.Star, contentDescription = "Fogo", tint = AccentKegel, modifier = Modifier.size(16.dp))
                 Spacer(modifier = Modifier.width(4.dp))
                 Text("3 Dias", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+            }
+        }
+
+        // Próximo Lembrete / Evento Banner
+        if (alertsEnabled && nextEvent != null) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(Slate900)
+                    .border(
+                        0.5.dp,
+                        if (nextEvent.type == ActivityType.KEGEL) AccentKegel.copy(alpha = 0.5f) else AccentMeditation.copy(alpha = 0.5f),
+                        RoundedCornerShape(16.dp)
+                    )
+                    .padding(14.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .background(
+                                if (nextEvent.type == ActivityType.KEGEL) AccentKegel.copy(alpha = 0.15f) else AccentMeditation.copy(alpha = 0.15f),
+                                CircleShape
+                            )
+                            .padding(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Notifications,
+                            contentDescription = "Lembrete",
+                            tint = if (nextEvent.type == ActivityType.KEGEL) AccentKegel else AccentMeditation,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column {
+                        Text(
+                            text = "Próximo Lembrete às ${nextEvent.timeStr}",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                        Text(
+                            text = nextEvent.title,
+                            fontSize = 10.sp,
+                            color = Slate400
+                        )
+                    }
+                }
             }
         }
 
@@ -786,8 +865,11 @@ fun SettingsView(
     onKegelDurationChange: (Int) -> Unit,
     onMeditationCountChange: (Int) -> Unit,
     onMeditationDurationChange: (Int) -> Unit,
-    onAlertsEnabledChange: (Boolean) -> Unit
+    onAlertsEnabledChange: (Boolean) -> Unit,
+    onSave: () -> Unit
 ) {
+    val context = LocalContext.current
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -810,20 +892,75 @@ fun SettingsView(
                         Text("Período Ativo", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
                         
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            OutlinedTextField(
-                                value = wakeTime,
-                                onValueChange = onWakeTimeChange,
-                                label = { Text("Acordar", fontSize = 9.sp) },
-                                modifier = Modifier.weight(1f),
-                                textStyle = LocalTextStyle.current.copy(fontSize = 11.sp)
-                            )
-                            OutlinedTextField(
-                                value = sleepTime,
-                                onValueChange = onSleepTimeChange,
-                                label = { Text("Dormir", fontSize = 9.sp) },
-                                modifier = Modifier.weight(1f),
-                                textStyle = LocalTextStyle.current.copy(fontSize = 11.sp)
-                            )
+                            // Acordar (TimePicker)
+                            Box(modifier = Modifier.weight(1f)) {
+                                OutlinedTextField(
+                                    value = wakeTime,
+                                    onValueChange = {},
+                                    label = { Text("Acordar", fontSize = 9.sp) },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    textStyle = LocalTextStyle.current.copy(fontSize = 11.sp),
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        disabledTextColor = Color.White,
+                                        disabledBorderColor = Slate800,
+                                        disabledLabelColor = Slate400
+                                    ),
+                                    enabled = false
+                                )
+                                Box(
+                                    modifier = Modifier
+                                        .matchParentSize()
+                                        .clickable {
+                                            val parts = wakeTime.split(":")
+                                            val hour = parts.getOrNull(0)?.toIntOrNull() ?: 8
+                                            val minute = parts.getOrNull(1)?.toIntOrNull() ?: 0
+                                            android.app.TimePickerDialog(
+                                                context,
+                                                { _, selectedHour, selectedMinute ->
+                                                    onWakeTimeChange(String.format("%02d:%02d", selectedHour, selectedMinute))
+                                                },
+                                                hour,
+                                                minute,
+                                                true
+                                            ).show()
+                                        }
+                                )
+                            }
+
+                            // Dormir (TimePicker)
+                            Box(modifier = Modifier.weight(1f)) {
+                                OutlinedTextField(
+                                    value = sleepTime,
+                                    onValueChange = {},
+                                    label = { Text("Dormir", fontSize = 9.sp) },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    textStyle = LocalTextStyle.current.copy(fontSize = 11.sp),
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        disabledTextColor = Color.White,
+                                        disabledBorderColor = Slate800,
+                                        disabledLabelColor = Slate400
+                                    ),
+                                    enabled = false
+                                )
+                                Box(
+                                    modifier = Modifier
+                                        .matchParentSize()
+                                        .clickable {
+                                            val parts = sleepTime.split(":")
+                                            val hour = parts.getOrNull(0)?.toIntOrNull() ?: 22
+                                            val minute = parts.getOrNull(1)?.toIntOrNull() ?: 0
+                                            android.app.TimePickerDialog(
+                                                context,
+                                                { _, selectedHour, selectedMinute ->
+                                                    onSleepTimeChange(String.format("%02d:%02d", selectedHour, selectedMinute))
+                                                },
+                                                hour,
+                                                minute,
+                                                true
+                                            ).show()
+                                        }
+                                )
+                            }
                         }
                     }
                 }
@@ -892,6 +1029,24 @@ fun SettingsView(
                             colors = SwitchDefaults.colors(checkedThumbColor = AccentKegel, checkedTrackColor = AccentKegel.copy(alpha = 0.5f))
                         )
                     }
+                }
+            }
+
+            // Botão de Salvar Preferências
+            item {
+                Spacer(modifier = Modifier.height(8.dp))
+                Button(
+                    onClick = {
+                        onSave()
+                        android.widget.Toast.makeText(context, "Preferências salvas com sucesso!", android.widget.Toast.LENGTH_SHORT).show()
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = AccentKegel),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text("Salvar Preferências", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Slate950)
                 }
             }
         }
